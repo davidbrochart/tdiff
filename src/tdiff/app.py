@@ -20,12 +20,14 @@ class GitDiffApp(App):
         ("q", "quit", "Quit"),
         ("space", "toggle('split')", "Toggle split"),
         ("a", "toggle('annotations')", "Toggle annotations"),
+        ("w", "toggle('wrap')", "Toggle wrap"),
     ]
 
     show_tree = var(True)
     path: reactive[Path | None] = reactive(None)
     split = var(True)
     annotations = var(True)
+    wrap = var(True)
 
     def watch_show_tree(self, show_tree: bool) -> None:
         self.set_class(show_tree, "-show-tree")
@@ -77,12 +79,20 @@ class GitDiffApp(App):
 
         try:
             modified = path.relative_to(self._temp_dir)
-            _diff_view = await DiffView.load(path, modified)
+            _diff_view = await DiffView.load(
+                path,
+                modified,
+                split=self.split,
+                annotations=self.annotations,
+                wrap=self.wrap,
+            )
         except LoadError as error:
             self.notify(str(error), title="Failed to load code", severity="error")
             self.sub_title = "ERROR"
         else:
-            _diff_view.data_bind(GitDiffApp.split, GitDiffApp.annotations)
+            _diff_view.data_bind(
+                GitDiffApp.split, GitDiffApp.annotations, GitDiffApp.wrap
+            )
             if self._diff_view is not None:
                 self._diff_view.remove()
             self._diff_view = _diff_view
