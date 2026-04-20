@@ -4,12 +4,14 @@ from dulwich.porcelain import status
 from dulwich.repo import Repo
 
 
-def get_unstaged_files(repo: Repo) -> list[Path]:
+def get_unstaged_paths(repo: Repo) -> list[Path]:
     _status = status(repo)
     return [Path(path.decode()) for path in _status.unstaged]
 
 
-def get_committed_file(repo: Repo, path: Path, commit: str | None = None) -> str:
+def get_committed_files(
+    repo: Repo, paths: list[Path], commit: str | None = None
+) -> list[str]:
     commit_i = 0
     commit_id = b""
     if commit is not None:
@@ -25,6 +27,9 @@ def get_committed_file(repo: Repo, path: Path, commit: str | None = None) -> str
             commit_id = b""
         if not commit_id and i == commit_i:
             break
-    mode, sha = tree_lookup_path(repo.get_object, _commit.tree, bytes(path))
-    blob = repo[sha]
-    return blob.data.decode()  # type: ignore
+    files = []
+    for path in paths:
+        mode, sha = tree_lookup_path(repo.get_object, _commit.tree, bytes(path))
+        blob = repo[sha]
+        files.append(blob.data.decode())  # type: ignore
+    return files
