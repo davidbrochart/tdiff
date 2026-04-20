@@ -10,7 +10,7 @@ from textual import widgets
 
 from textual_diff_view import DiffView, LoadError
 
-from .git import get_committed_file, get_unstaged_files
+from .git import get_committed_files, get_unstaged_paths
 
 
 class GitDiffApp(App):
@@ -44,10 +44,10 @@ class GitDiffApp(App):
             yield VerticalScroll(id="diff-view")
         yield Footer()
 
-    async def _create_file(self, path: Path) -> None:
+    async def _create_file(self, unstaged_path: Path, commited_file: str) -> None:
+        path = self._temp_dir / unstaged_path
         await path.parent.mkdir(parents=True, exist_ok=True)
-        _path = path.relative_to(self._temp_dir)
-        await path.write_text(get_committed_file(self._repo, _path, self.commit))
+        await path.write_text(commited_file)
 
     async def _start(self) -> None:
         async with TemporaryDirectory() as self._temp_dir:
@@ -62,9 +62,12 @@ class GitDiffApp(App):
         await self._started.wait()
         self._repo = Repo(".")
         async with create_task_group() as tg:
-            for path in get_unstaged_files(self._repo):
-                self._temp_path = self._temp_dir / path
-                tg.start_soon(self._create_file, self._temp_path)
+            unstaged_paths = get_unstaged_paths(self._repo)
+            commited_files = get_committed_files(
+                self._repo, unstaged_paths, self.commit
+            )
+            for unstaged_path, commited_file in zip(unstaged_paths, commited_files):
+                tg.start_soon(self._create_file, unstaged_path, commited_file)
         directory_tree = DirectoryTree(self._temp_dir)
         directory_tree.show_root = False
         await self.query_one("#tree-view").mount(directory_tree)
