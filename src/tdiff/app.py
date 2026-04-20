@@ -29,6 +29,10 @@ class GitDiffApp(App):
     annotations = var(True)
     wrap = var(True)
 
+    def __init__(self, commit: str | None) -> None:
+        self.commit = commit
+        super().__init__()
+
     def watch_show_tree(self, show_tree: bool) -> None:
         self.set_class(show_tree, "-show-tree")
 
@@ -43,7 +47,7 @@ class GitDiffApp(App):
     async def _create_file(self, path: Path) -> None:
         await path.parent.mkdir(parents=True, exist_ok=True)
         _path = path.relative_to(self._temp_dir)
-        await path.write_text(get_committed_file(self._repo, _path))
+        await path.write_text(get_committed_file(self._repo, _path, self.commit))
 
     async def _start(self) -> None:
         async with TemporaryDirectory() as self._temp_dir:
@@ -105,12 +109,15 @@ class GitDiffApp(App):
 
 class DiffApp(App):
     BINDINGS = [
+        ("q", "quit", "Quit"),
         ("space", "toggle('split')", "Toggle split"),
         ("a", "toggle('annotations')", "Toggle annotations"),
+        ("w", "toggle('wrap')", "Toggle wrap"),
     ]
 
     split = var(True)
     annotations = var(True)
+    wrap = var(True)
 
     def __init__(self, original: str, modified: str) -> None:
         self.original = original
@@ -123,9 +130,15 @@ class DiffApp(App):
 
     async def on_mount(self) -> None:
         try:
-            diff_view = await DiffView.load(self.original, self.modified)
+            diff_view = await DiffView.load(
+                self.original,
+                self.modified,
+                split=self.split,
+                annotations=self.annotations,
+                wrap=self.wrap,
+            )
         except LoadError as error:
             self.notify(str(error), title="Failed to load code", severity="error")
         else:
-            diff_view.data_bind(DiffApp.split, DiffApp.annotations)
+            diff_view.data_bind(DiffApp.split, DiffApp.annotations, DiffApp.wrap)
             await self.query_one("#diff-container").mount(diff_view)
