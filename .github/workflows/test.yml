@@ -1,0 +1,53 @@
+name: test
+
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+    branches:
+    - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ${{ matrix.os }}-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu, macos, windows]
+        python-version: [ '3.11', '3.12', '3.13', '3.14' ]
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          activate-environment: "true"
+      - name: Install tdiff
+        run: |
+          uv venv --clear
+          uv pip install -e . --group dev
+
+      - name: Check types
+        run: |
+          ty check src tests
+
+      - name: Lint
+        run: |
+          ruff check src tests
+          ruff format --check src tests
+
+      - name: Run tests
+        if: ${{ !((matrix.python-version == '3.14') && (matrix.os == 'ubuntu')) }}
+        run: pytest -v --color=yes
+
+      - name: Run code coverage
+        if: ${{ (matrix.python-version == '3.14') && (matrix.os == 'ubuntu') }}
+        run: |
+          coverage run -m pytest tests
+          coverage report --show-missing

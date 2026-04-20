@@ -1,5 +1,7 @@
 # tdiff
 
+[![Build Status](https://github.com/davidbrochart/tdiff/workflows/test/badge.svg)](https://github.com/davidbrochart/tdiff/actions)
+
 A Textual diff application.
 
 ## Usage
