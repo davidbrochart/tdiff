@@ -28,6 +28,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           activate-environment: "true"
+      - uses: fregante/setup-git-user@v2
       - name: Install tdiff
         run: |
           uv venv --clear
