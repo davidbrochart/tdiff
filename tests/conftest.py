@@ -1,17 +1,15 @@
 import pytest
-from dulwich import porcelain
+from anyio import run_process
 
 
 @pytest.fixture
-def git_repo(tmp_path):
-    repo = porcelain.init(tmp_path)
+async def git_repo(tmp_path) -> None:
     (tmp_path / "foo.txt").write_text("Hello, World!")
-    porcelain.add(repo, "foo.txt")
-    porcelain.commit(repo, b"First commit")
-    return repo
+    await run_process("git init".split(), cwd=tmp_path)
+    await run_process("git add foo.txt".split(), cwd=tmp_path)
+    await run_process("git commit -m 'First commit'", cwd=tmp_path)
 
 
 @pytest.fixture
-def git_repo_with_changes(git_repo, tmp_path):
+def git_repo_with_changes(git_repo, tmp_path) -> None:
     (tmp_path / "foo.txt").write_text("hello world")
-    return git_repo

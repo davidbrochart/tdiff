@@ -7,16 +7,19 @@ app = App()
 
 @app.command
 def git(
-    commit: str | None = None,
+    original: str = "",
+    modified: str = "",
 ) -> None:
-    git_diff_app = GitDiffApp(commit)
+    if not original:
+        original = "HEAD"
+    git_diff_app = GitDiffApp(original, modified)
     git_diff_app.run()
 
 
 @app.default
 def default_action(
-    path1: str,
-    path2: str,
+    original: str,
+    modified: str,
 ) -> None:
-    diff_app = DiffApp(path1, path2)
+    diff_app = DiffApp(original, modified)
     diff_app.run()

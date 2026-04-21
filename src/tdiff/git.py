@@ -1,35 +1,44 @@
-from anyio import Path
-from dulwich.object_store import tree_lookup_path
-from dulwich.porcelain import status
-from dulwich.repo import Repo
+from subprocess import CalledProcessError
+
+from anyio import Path, create_task_group, run_process
 
 
-def get_unstaged_paths(repo: Repo) -> list[Path]:
-    _status = status(repo)
-    return [Path(path.decode()) for path in _status.unstaged]
+async def get_diff_paths(
+    original: str = "", modified: str = "", cwd: str | None = None
+) -> list[Path]:
+    args = ""
+    if original:
+        args += original
+    if modified:
+        args += f":{modified}"
+    result = await run_process(f"git diff --name-only {args}", cwd=cwd)
+    paths = result.stdout.decode().splitlines()
+    return [Path(path) for path in paths]
 
 
-def get_committed_files(
-    repo: Repo, paths: list[Path], commit: str | None = None
+async def get_file_contents(
+    paths: list[Path], ref: str = "", cwd: str | None = None
 ) -> list[str]:
-    commit_i = 0
-    commit_id = b""
-    if commit is not None:
-        if (i := commit.find("~")) >= 0:
-            commit_i = int(commit[i + 1 :])
-            commit_id = commit[:i].encode()
+    contents = ["" for _ in paths]
+    async with create_task_group() as tg:
+        for i, path in enumerate(paths):
+            tg.start_soon(get_file_content, path, ref, cwd, contents, i)
+    return contents
+
+
+async def get_file_content(
+    path: Path, ref: str, cwd: str | None, contents: list[str | None], i: int
+) -> None:
+    if not ref:
+        if cwd is None:
+            _path = path
         else:
-            commit_id = commit.encode()
-    for i, entry in enumerate(repo.get_walker()):
-        _commit = entry.commit
-        if _commit.id == commit_id:
-            commit_i += i
-            commit_id = b""
-        if not commit_id and i == commit_i:
-            break
-    files = []
-    for path in paths:
-        mode, sha = tree_lookup_path(repo.get_object, _commit.tree, bytes(path))
-        blob = repo[sha]
-        files.append(blob.data.decode())  # type: ignore
-    return files
+            _path = Path(cwd) / path
+        content = await _path.read_text()
+    else:
+        try:
+            result = await run_process(f"git cat-file -p {ref}:{path}", cwd=cwd)
+            content = result.stdout.decode()
+        except CalledProcessError:
+            content = ""
+    contents[i] = content

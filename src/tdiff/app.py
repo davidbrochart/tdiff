@@ -1,7 +1,6 @@
 from asyncio import create_task
 
 from anyio import Event, Path, TemporaryDirectory, create_task_group
-from dulwich.repo import Repo
 from textual.app import App, ComposeResult
 from textual.containers import Container, VerticalScroll
 from textual.reactive import reactive, var
@@ -10,7 +9,7 @@ from textual import widgets
 
 from textual_diff_view import DiffView, LoadError
 
-from .git import get_committed_files, get_unstaged_paths
+from .git import get_diff_paths, get_file_contents
 
 
 class GitDiffApp(App):
@@ -29,8 +28,9 @@ class GitDiffApp(App):
     annotations = var(True)
     wrap = var(True)
 
-    def __init__(self, commit: str | None) -> None:
-        self.commit = commit
+    def __init__(self, original: str, modified: str) -> None:
+        self.original = original
+        self.modified = modified
         super().__init__()
 
     def watch_show_tree(self, show_tree: bool) -> None:
@@ -44,13 +44,15 @@ class GitDiffApp(App):
             yield VerticalScroll(id="diff-view")
         yield Footer()
 
-    async def _create_file(self, unstaged_path: Path, commited_file: str) -> None:
-        path = self._temp_dir / unstaged_path
+    async def _create_file(self, path: Path, content: str) -> None:
         await path.parent.mkdir(parents=True, exist_ok=True)
-        await path.write_text(commited_file)
+        await path.write_text(content)
 
     async def _start(self) -> None:
-        async with TemporaryDirectory() as self._temp_dir:
+        async with (
+            TemporaryDirectory() as self._original_temp_dir,
+            TemporaryDirectory() as self._modified_temp_dir,
+        ):
             self._started.set()
             await self._stopped.wait()
 
@@ -60,15 +62,24 @@ class GitDiffApp(App):
         self._stopped = Event()
         self._task = create_task(self._start())
         await self._started.wait()
-        self._repo = Repo(".")
         async with create_task_group() as tg:
-            unstaged_paths = get_unstaged_paths(self._repo)
-            commited_files = get_committed_files(
-                self._repo, unstaged_paths, self.commit
-            )
-            for unstaged_path, commited_file in zip(unstaged_paths, commited_files):
-                tg.start_soon(self._create_file, unstaged_path, commited_file)
-        directory_tree = DirectoryTree(self._temp_dir)
+            diff_paths = await get_diff_paths(self.original, self.modified)
+            original_file_contents = await get_file_contents(diff_paths, self.original)
+            modified_file_contents = await get_file_contents(diff_paths, self.modified)
+            for diff_path, original_file_content, modified_file_content in zip(
+                diff_paths, original_file_contents, modified_file_contents
+            ):
+                tg.start_soon(
+                    self._create_file,
+                    self._original_temp_dir / diff_path,
+                    original_file_content,
+                )
+                tg.start_soon(
+                    self._create_file,
+                    self._modified_temp_dir / diff_path,
+                    modified_file_content,
+                )
+        directory_tree = DirectoryTree(self._original_temp_dir)
         directory_tree.show_root = False
         await self.query_one("#tree-view").mount(directory_tree)
         directory_tree.focus()
@@ -85,7 +96,9 @@ class GitDiffApp(App):
             return
 
         try:
-            modified = path.relative_to(self._temp_dir)
+            modified = self._modified_temp_dir / path.relative_to(
+                self._original_temp_dir
+            )
             _diff_view = await DiffView.load(
                 path,
                 modified,
