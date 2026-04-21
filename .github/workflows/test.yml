@@ -28,7 +28,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           activate-environment: "true"
-      - uses: fregante/setup-git-user@v2
       - name: Install tdiff
         run: |
           uv venv --clear
@@ -42,6 +41,11 @@ jobs:
         run: |
           ruff check src tests
           ruff format --check src tests
+
+      - name: Set up Git
+        run: |
+          git config --global user.name "Your Name"
+          git config --global user.email "your.email@example.com"
 
       - name: Run tests
         if: ${{ !((matrix.python-version == '3.14') && (matrix.os == 'ubuntu')) }}
