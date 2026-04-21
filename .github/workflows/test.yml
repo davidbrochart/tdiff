@@ -42,6 +42,11 @@ jobs:
           ruff check src tests
           ruff format --check src tests
 
+      - name: Set up Git
+        run: |
+          git config --global user.name "Your Name"
+          git config --global user.email "your.email@example.com"
+
       - name: Run tests
         if: ${{ !((matrix.python-version == '3.14') && (matrix.os == 'ubuntu')) }}
         run: pytest -v --color=yes
