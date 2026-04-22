@@ -9,7 +9,7 @@ from textual import widgets
 
 from textual_diff_view import DiffView, LoadError
 
-from .git import get_diff_paths, get_file_contents
+from .git import get_diff_paths, get_file_content
 
 
 class GitDiffApp(App):
@@ -44,9 +44,16 @@ class GitDiffApp(App):
             yield VerticalScroll(id="diff-view")
         yield Footer()
 
-    async def _create_file(self, path: Path, content: str) -> None:
-        await path.parent.mkdir(parents=True, exist_ok=True)
-        await path.write_text(content)
+    async def _create_file(self, path: Path, original: bool) -> None:
+        if original:
+            temp_dir = self._original_temp_dir
+            ref = self.original
+        else:
+            temp_dir = self._modified_temp_dir
+            ref = self.modified
+        content = await get_file_content(path, ref, temp_path=temp_dir / path)
+        await (temp_dir / path).parent.mkdir(parents=True, exist_ok=True)
+        await (temp_dir / path).write_text(content)
 
     async def _start(self) -> None:
         async with (
@@ -64,21 +71,13 @@ class GitDiffApp(App):
         await self._started.wait()
         async with create_task_group() as tg:
             diff_paths = await get_diff_paths(self.original, self.modified)
-            original_file_contents = await get_file_contents(diff_paths, self.original)
-            modified_file_contents = await get_file_contents(diff_paths, self.modified)
-            for diff_path, original_file_content, modified_file_content in zip(
-                diff_paths, original_file_contents, modified_file_contents
-            ):
-                tg.start_soon(
-                    self._create_file,
-                    self._original_temp_dir / diff_path,
-                    original_file_content,
-                )
-                tg.start_soon(
-                    self._create_file,
-                    self._modified_temp_dir / diff_path,
-                    modified_file_content,
-                )
+            for i, path in enumerate(diff_paths):
+                for original in [True, False]:
+                    tg.start_soon(
+                        self._create_file,
+                        path,
+                        original,
+                    )
         directory_tree = DirectoryTree(self._original_temp_dir)
         directory_tree.show_root = False
         await self.query_one("#tree-view").mount(directory_tree)
@@ -96,11 +95,12 @@ class GitDiffApp(App):
             return
 
         try:
-            modified = self._modified_temp_dir / path.relative_to(
+            original = path
+            modified = self._modified_temp_dir / original.relative_to(
                 self._original_temp_dir
             )
             _diff_view = await DiffView.load(
-                path,
+                original,
                 modified,
                 split=self.split,
                 annotations=self.annotations,
@@ -117,7 +117,8 @@ class GitDiffApp(App):
                 self._diff_view.remove()
             self._diff_view = _diff_view
             await diff_view.mount(_diff_view)
-            self.sub_title = modified  # type: ignore
+            self.query_one("#diff-view").scroll_home(animate=False)
+            self.sub_title = modified.relative_to(self._modified_temp_dir)  # type: ignore
 
     def action_toggle_files(self) -> None:
         self.show_tree = not self.show_tree
