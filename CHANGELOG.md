@@ -1,5 +1,10 @@
 # Version history
 
+## 0.4.0
+
+This release adds support for comparing two directories. Previously, only two files could be
+compared when not in git mode.
+
 ## 0.3.2
 
 The `LICENSE` file was not shipped in the source distribution, now it is.
