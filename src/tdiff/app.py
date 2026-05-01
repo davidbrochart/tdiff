@@ -9,10 +9,15 @@ from textual import widgets
 
 from textual_diff_view import DiffView, LoadError
 
-from .git import get_diff_paths, get_file_content
+from .utils import (
+    get_dir_diff_paths,
+    get_git_diff_paths,
+    get_file_content,
+    get_git_file_content,
+)
 
 
-class GitDiffApp(App):
+class DiffApp(App):
     CSS_PATH = "app.tcss"
     BINDINGS = [
         ("f", "toggle_files", "Toggle Files"),
@@ -28,9 +33,10 @@ class GitDiffApp(App):
     annotations = var(True)
     wrap = var(True)
 
-    def __init__(self, original: str, modified: str) -> None:
+    def __init__(self, original: str, modified: str, is_git: bool = False) -> None:
         self.original = original
         self.modified = modified
+        self.is_git = is_git
         super().__init__()
 
     def watch_show_tree(self, show_tree: bool) -> None:
@@ -45,13 +51,15 @@ class GitDiffApp(App):
         yield Footer()
 
     async def _create_file(self, path: Path, original: bool) -> None:
-        if original:
-            temp_dir = self._original_temp_dir
-            ref = self.original
+        temp_dir = self._original_temp_dir if original else self._modified_temp_dir
+        if self.is_git:
+            ref = self.original if original else self.modified
+            content = await get_git_file_content(path, ref, temp_path=temp_dir / path)
         else:
-            temp_dir = self._modified_temp_dir
-            ref = self.modified
-        content = await get_file_content(path, ref, temp_path=temp_dir / path)
+            _path = (
+                Path(self.original) / path if original else Path(self.modified) / path
+            )
+            content = await get_file_content(_path)
         await (temp_dir / path).parent.mkdir(parents=True, exist_ok=True)
         await (temp_dir / path).write_text(content)
 
@@ -69,9 +77,12 @@ class GitDiffApp(App):
         self._stopped = Event()
         self._task = create_task(self._start())
         await self._started.wait()
+        if self.is_git:
+            diff_paths = await get_git_diff_paths(self.original, self.modified)
+        else:
+            diff_paths = await get_dir_diff_paths(self.original, self.modified)
         async with create_task_group() as tg:
-            diff_paths = await get_diff_paths(self.original, self.modified)
-            for i, path in enumerate(diff_paths):
+            for path in diff_paths:
                 for original in [True, False]:
                     tg.start_soon(
                         self._create_file,
@@ -110,9 +121,7 @@ class GitDiffApp(App):
             self.notify(str(error), title="Failed to load code", severity="error")
             self.sub_title = "ERROR"
         else:
-            _diff_view.data_bind(
-                GitDiffApp.split, GitDiffApp.annotations, GitDiffApp.wrap
-            )
+            _diff_view.data_bind(DiffApp.split, DiffApp.annotations, DiffApp.wrap)
             if self._diff_view is not None:
                 self._diff_view.remove()
             self._diff_view = _diff_view
@@ -124,7 +133,7 @@ class GitDiffApp(App):
         self.show_tree = not self.show_tree
 
 
-class DiffApp(App):
+class FileDiffApp(App):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("space", "toggle('split')", "Toggle split"),
@@ -157,5 +166,7 @@ class DiffApp(App):
         except LoadError as error:
             self.notify(str(error), title="Failed to load code", severity="error")
         else:
-            diff_view.data_bind(DiffApp.split, DiffApp.annotations, DiffApp.wrap)
+            diff_view.data_bind(
+                FileDiffApp.split, FileDiffApp.annotations, FileDiffApp.wrap
+            )
             await self.query_one("#diff-container").mount(diff_view)
