@@ -4,9 +4,9 @@ build-backend = "uv_build"
 
 [project]
 name = "tdiff"
-version = "0.3.1"
+version = "0.3.2"
 description = "Textual diff application"
-license = { text = "AGPL-3.0-or-later" }
+license = { file = "LICENSE" }
 homepage = "https://github.com/davidbrochart/tdiff"
 repository = "https://github.com/davidbrochart/tdiff"
 documentation = "https://github.com/davidbrochart/tdiff"
@@ -32,7 +32,7 @@ classifiers = [
 dependencies = [
   "anyio >=4.13.0,<5",
   "cyclopts >=4.10.2,<5",
-  "textual-diff-view >=0.1.4,<1",
+  "textual-diff-view >=0.1.5,<1",
 ]
 
 [dependency-groups]

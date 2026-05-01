@@ -27,6 +27,8 @@ async def get_file_content(
             _path = Path(cwd) / path
         try:
             content = await _path.read_text()
+        except FileNotFoundError:
+            content = ""
         except Exception:  # likely a unicode decode error
             content = f"Error loading file: {temp_path}"
     else:

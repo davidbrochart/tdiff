@@ -1,5 +1,9 @@
 # Version history
 
+## 0.3.2
+
+The `LICENSE` file was not shipped in the source distribution, now it is.
+
 ## 0.3.1
 
 This release has minor fixes and refactors. It also won't open big files, or files that cannot
