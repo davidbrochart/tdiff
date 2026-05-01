@@ -13,7 +13,7 @@ Screen {
     dock: left;
 }
 
-GitDiffApp.-show-tree #tree-view {
+DiffApp.-show-tree #tree-view {
     display: block;
     max-width: 50%;
 }
