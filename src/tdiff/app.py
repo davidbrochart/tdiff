@@ -6,6 +6,7 @@ from textual.containers import Container, VerticalScroll
 from textual.reactive import reactive, var
 from textual.widgets import DirectoryTree, Footer, Header
 from textual import widgets
+from watchfiles import awatch
 
 from textual_diff_view import DiffView, LoadError
 
@@ -67,6 +68,7 @@ class DiffApp(App):
         async with (
             TemporaryDirectory() as self._original_temp_dir,
             TemporaryDirectory() as self._modified_temp_dir,
+            create_task_group() as self._task_group,
         ):
             self._started.set()
             await self._stopped.wait()
@@ -75,20 +77,27 @@ class DiffApp(App):
         self._diff_view: DiffView | None = None
         self._started = Event()
         self._stopped = Event()
+        self._viewed_paths: list[Path] = []
         self._task = create_task(self._start())
         await self._started.wait()
         if self.is_git:
-            diff_paths = await get_git_diff_paths(self.original, self.modified)
+            self._diff_paths = await get_git_diff_paths(self.original, self.modified)
         else:
-            diff_paths = await get_dir_diff_paths(self.original, self.modified)
+            self._diff_paths = await get_dir_diff_paths(self.original, self.modified)
         async with create_task_group() as tg:
-            for path in diff_paths:
+            for path in self._diff_paths:
                 for original in [True, False]:
                     tg.start_soon(
                         self._create_file,
                         path,
                         original,
                     )
+        if self.is_git:
+            if not self.modified:
+                self._task_group.start_soon(self._watch_files)
+        else:
+            self._task_group.start_soon(self._watch_files, self.original)
+            self._task_group.start_soon(self._watch_files, self.modified)
         directory_tree = DirectoryTree(self._original_temp_dir)
         directory_tree.show_root = False
         await self.query_one("#tree-view").mount(directory_tree)
@@ -101,15 +110,17 @@ class DiffApp(App):
         self.path = event.path  # type: ignore
 
     async def watch_path(self, path: Path | None) -> None:
-        diff_view = self.query_one("#diff-view")
         if path is None:
             return
 
+        await self._view_diff(path)
+
+    async def _view_diff(self, path: Path) -> None:
+        diff_view = self.query_one("#diff-view")
         try:
-            original = path
-            modified = self._modified_temp_dir / original.relative_to(
-                self._original_temp_dir
-            )
+            original = Path(path)
+            rel_path = original.relative_to(self._original_temp_dir)
+            modified = self._modified_temp_dir / rel_path
             _diff_view = await DiffView.load(
                 original,
                 modified,
@@ -128,6 +139,30 @@ class DiffApp(App):
             await diff_view.mount(_diff_view)
             self.query_one("#diff-view").scroll_home(animate=False)
             self.sub_title = modified.relative_to(self._modified_temp_dir)  # type: ignore
+            if self.is_git:
+                if not self.modified:
+                    self._viewed_paths = [await rel_path.resolve()]
+            else:
+                self._viewed_paths = [
+                    await (Path(self.original) / rel_path).resolve(),
+                    await (Path(self.modified) / rel_path).resolve(),
+                ]
+
+    async def _watch_files(self, directory: str = "") -> None:
+        async for changes in awatch(directory):
+            for change in changes:
+                absolute_path = Path(change[1])
+                path = absolute_path.relative_to(await Path(directory).resolve())
+                if path in self._diff_paths:
+                    if not directory:
+                        original = False
+                    else:
+                        original = directory == self.original
+                    await self._create_file(path, original)
+                    if absolute_path in self._viewed_paths:
+                        self._task_group.start_soon(
+                            self._view_diff, self._original_temp_dir / path
+                        )
 
     def action_toggle_files(self) -> None:
         self.show_tree = not self.show_tree
