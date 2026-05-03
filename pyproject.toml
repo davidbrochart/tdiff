@@ -33,6 +33,7 @@ dependencies = [
   "anyio >=4.13.0,<5",
   "cyclopts >=4.10.2,<5",
   "textual-diff-view >=0.1.5,<1",
+  "watchfiles >=1.1.1,<2.0.0",
 ]
 
 [dependency-groups]
