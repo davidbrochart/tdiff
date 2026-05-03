@@ -1,5 +1,10 @@
 # Version history
 
+## 0.4.1
+
+Now the diff view refreshes when a file changes. Note that the file tree doesn't
+update when a new file is created, for instance.
+
 ## 0.4.0
 
 This release adds support for comparing two directories. Previously, only two files could be
